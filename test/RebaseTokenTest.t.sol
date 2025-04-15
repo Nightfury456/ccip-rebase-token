@@ -5,6 +5,8 @@ import {Test, console} from "forge-std/Test.sol";
 import {RebaseToken} from "../src/RebaseToken.sol";
 import {Vault} from "../src/Vault.sol";
 import {IRebaseToken} from "../src/interfaces/IRebaseToken.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract RebaseTokenTest is Test {
     RebaseToken private rebaseToken;
@@ -86,5 +88,74 @@ contract RebaseTokenTest is Test {
 
         assertEq(ethBalance, balanceAfterSomeTime);
         assertGt(ethBalance, depositAmount);
+    }
+
+    function testTransfer(uint256 amount, uint256 amountToSend) public {
+        amount = bound(amount, 1e5 + 1e5, type(uint96).max);
+        amountToSend = bound(amountToSend, 1e5, amount - 1e5);
+        vm.deal(user, amount);
+        vm.prank(user);
+        vault.deposit{value: amount}();
+
+        address recipient = makeAddr("recipient");
+        uint256 userBalance = rebaseToken.balanceOf(user);
+        uint256 recipientBalance = rebaseToken.balanceOf(recipient);
+        assertEq(userBalance, amount);
+        assertEq(recipientBalance, 0);
+
+        // owner reduces interest rate
+        vm.prank(owner);
+        rebaseToken.setInterestRate(4e10);
+
+        // 2. transfer
+        vm.prank(user);
+        rebaseToken.transfer(recipient, amountToSend);
+        uint256 userBalanceAfter = rebaseToken.balanceOf(user);
+        uint256 recipientBalanceAfter = rebaseToken.balanceOf(recipient);
+        assertEq(userBalanceAfter, userBalance - amountToSend);
+        assertEq(recipientBalanceAfter, recipientBalance + amountToSend);
+
+        // check the user interest rate has been inherited (5e10 not 4e10)
+
+        assertEq(rebaseToken.getUserInterestRate(user), 5e10);
+        assertEq(rebaseToken.getUserInterestRate(recipient), 5e10);
+    }
+
+    function testCannotSetTheInterestRateIfNotOwner(uint256 newInterestRate) public {
+        vm.prank(user);
+        vm.expectPartialRevert(Ownable.OwnableUnauthorizedAccount.selector);
+        rebaseToken.setInterestRate(newInterestRate);
+    }
+
+    function testCannotCallMintAndBurn() public {
+        vm.prank(user);
+        vm.expectPartialRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
+        rebaseToken.mint(user, 1e5);
+        vm.expectPartialRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
+        rebaseToken.burn(user, 1e5);
+    }
+
+    function testGetPrincipleBalanceOf(uint256 amount) public {
+        amount = bound(amount, 1e5, type(uint96).max);
+        vm.deal(user, amount);
+        vm.prank(user);
+        vault.deposit{value: amount}();
+        assertEq(rebaseToken.principleBalanceOf(user), amount);
+
+        vm.warp(block.timestamp + 1 hours);
+        assertEq(rebaseToken.principleBalanceOf(user), amount);
+    }
+
+    function testGetRebaseTokenAddress() public view {
+        assertEq(address(rebaseToken), vault.getRebaseTokenAddress());
+    }
+
+    function testInterestRateCanOnlyDecrease(uint256 newInterestRate) public {
+        uint256 initialInterestRate = rebaseToken.getInterestRate();
+        newInterestRate = bound(newInterestRate, initialInterestRate, type(uint256).max);
+        vm.prank(owner);
+        vm.expectPartialRevert(RebaseToken.RebaseToken__InterestRateIncreaseNotAllowed.selector);
+        rebaseToken.setInterestRate(newInterestRate);
+        assertEq(rebaseToken.getInterestRate(), initialInterestRate);
     }
 }
