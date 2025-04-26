@@ -31,7 +31,7 @@ contract Vault {
         i_rebaseToken.mint(msg.sender, msg.value, interestRate);
         emit Deposit(msg.sender, msg.value);
     }
-    
+
     /**
      * @notice Redeem Rebase tokens for ETH.
      * @param _amount The amount of tokens to be redeemed.
