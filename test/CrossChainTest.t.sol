@@ -115,7 +115,7 @@ contract CrossChainTest is Test {
         vm.selectFork(fork);
         vm.prank(owner);
         bytes[] memory remotePoolAddresses = new bytes[](1);
-        remotePoolAddresses[0] = abi.encodePacked(remotePool);
+        remotePoolAddresses[0] = abi.encode(remotePool);
         TokenPool.ChainUpdate[] memory chainsToAdd = new TokenPool.ChainUpdate[](1);
         // struct ChainUpdate {
         //     uint64 remoteChainSelector; // ──╮ Remote chain selector
